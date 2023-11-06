@@ -31,12 +31,33 @@ def draw_landmarks_on_image(rgb_image, detection_result):
             solutions.drawing_styles.get_default_pose_landmarks_style())
     return annotated_image
 
+def avg(list):
+    return sum(list) / len(list)
+
+def append_triple(triple, x, y, z):
+    triple[0].append(x)
+    triple[1].append(y)
+    triple[2].append(z)
+
+def print_point_queue_info(point_queue, name):
+    print(name)
+    q_x = point_queue[0]
+    q_y = point_queue[1]
+    q_z = point_queue[2]
+    print('minimum = ({}, {}, {})'.format(min(q_x), min(q_y), min(q_z)))
+    print('maximum = ({}, {}, {})'.format(max(q_x), max(q_y), max(q_z)))
+    print('average = ({}, {}, {})\n'.format(avg(q_x), avg(q_y), avg(q_z)))
+
 model_path = './pose_landmarker_full.task'
 
 def main():
     detection_result_list = []
     image_result_list = []
     delay_queue = deque(maxlen=300)
+
+    shoulder_triple = (deque(maxlen=300), deque(maxlen=300), deque(maxlen=300))
+    elbow_triple = (deque(maxlen=300), deque(maxlen=300), deque(maxlen=300))
+    wrist_triple = (deque(maxlen=300), deque(maxlen=300), deque(maxlen=300))
 
     counter, fps = 0, 0
 
@@ -73,14 +94,23 @@ def main():
         right_shoulder_xyz = np.array([right_shoulder.x, right_shoulder.y, right_shoulder.z])
         right_elbow_xyz = np.array([right_elbow.x, right_elbow.y, right_elbow.z])
         right_wrist_xyz = np.array([right_wrist.x, right_wrist.y, right_wrist.z])
+
+        append_triple(shoulder_triple, right_shoulder.x, right_shoulder.y, right_shoulder.z)
+        append_triple(elbow_triple, right_elbow.x, right_elbow.y, right_elbow.z)
+        append_triple(wrist_triple, right_wrist.x, right_wrist.y, right_wrist.z)
+
+        print_point_queue_info(shoulder_triple, 'Shoulder:')
+        print_point_queue_info(elbow_triple, 'Elbow:')
+        print_point_queue_info(wrist_triple, 'Wrist:')
+
         down_xyz = np.array([right_shoulder.x, 1., right_shoulder.z])
 
         vec1 = right_wrist_xyz - right_elbow_xyz
         vec2 = right_shoulder_xyz - right_elbow_xyz
         cosine_angle = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
         angle = np.arccos(cosine_angle)
-        print(np.degrees(angle))
-        result.hand_angle = np.degrees(angle)
+        print('elbow angle: {}\n'.format(np.degrees(angle)))
+        result.angle = np.degrees(angle)
 
 
         #rw.x = 0
@@ -88,7 +118,7 @@ def main():
 
         print('Right Shoulder: [ {} , {} , {} ]'.format(right_shoulder.x, right_shoulder.y, right_shoulder.z))
         print('Right Elbow: [ {} , {} , {} ]'.format(right_elbow.x, right_elbow.y, right_elbow.z))
-        print('Right Wrist: [ {} , {} , {} ]'.format(right_wrist.x, right_wrist.y, right_wrist.z))
+        print('Right Wrist: [ {} , {} , {} ]\n'.format(right_wrist.x, right_wrist.y, right_wrist.z))
 
         #print('Right Shoulder: {}'.format(result.pose_landmarks[0][PoseLandmark.RIGHT_SHOULDER]))
         #print('Right Elbow: {}'.format(result.pose_landmarks[0][PoseLandmark.RIGHT_ELBOW]))
@@ -157,7 +187,7 @@ def main():
 
             # Show the angle
             angle = 0
-            angle_text = 'Angle = {:3f}'.format(detection_result_list[0].hand_angle)
+            angle_text = 'Elbow Angle = {:3f}'.format(detection_result_list[0].angle)
             text_location = (left_margin, 3 * row_size)
             cv2.putText(vis_img, angle_text, text_location, cv2.FONT_HERSHEY_PLAIN,
                         font_size, text_color, font_thickness)
