@@ -103,8 +103,6 @@ def main():
         print_point_queue_info(elbow_triple, 'Elbow:')
         print_point_queue_info(wrist_triple, 'Wrist:')
 
-        down_xyz = np.array([right_shoulder.x, 1., right_shoulder.z])
-
         vec1 = right_wrist_xyz - right_elbow_xyz
         vec2 = right_shoulder_xyz - right_elbow_xyz
         cosine_angle = np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
