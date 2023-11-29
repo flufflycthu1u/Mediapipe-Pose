@@ -5,6 +5,7 @@ import math
 import mediapipe as mp
 import numpy as np
 
+from sortedcontainers import SortedList
 from collections import deque
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
@@ -15,6 +16,20 @@ from mediapipe.framework.formats import landmark_pb2
 def draw_landmarks_on_image(rgb_image, detection_result):
     pose_landmarks_list = detection_result.pose_landmarks
     annotated_image = np.copy(rgb_image)
+
+    nose = pose_landmarks_list[0][PoseLandmark.NOSE]
+    l_ear = pose_landmarks_list[0][PoseLandmark.LEFT_EAR]
+    r_ear = pose_landmarks_list[0][PoseLandmark.RIGHT_EAR]
+
+    norm_nose = landmark_pb2.NormalizedLandmark(x=nose.x, y=nose.y, z=nose.z)
+    norm_l_ear = landmark_pb2.NormalizedLandmark(x=l_ear.x, y=l_ear.x, z=l_ear.x)
+    norm_r_ear = landmark_pb2.NormalizedLandmark(x=r_ear.x, y=r_ear.x, z=r_ear.x)
+
+    image_rows, image_cols, _ = annotated_image.shape
+    nose_px = solutions.drawing_utils._normalized_to_pixel_coordinates(nose.x, nose.y, image_cols, image_rows)
+    l_ear_px = solutions.drawing_utils._normalized_to_pixel_coordinates(l_ear.x, l_ear.y, image_cols, image_rows)
+
+    annotated_image = cv2.ellipse(annotated_image, nose_px, (100,100), 30, 0, 360, (0, 0, 0), -1)
 
     # Loop through the detected poses to visualize.
     for idx in range(len(pose_landmarks_list)):
@@ -31,9 +46,6 @@ def draw_landmarks_on_image(rgb_image, detection_result):
             solutions.pose.POSE_CONNECTIONS,
             solutions.drawing_styles.get_default_pose_landmarks_style())
     return annotated_image
-
-def dist(x1, y1, x2, y2):
-    return math.sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
 def avg(list):
     return sum(list) / len(list)
@@ -61,7 +73,11 @@ def main():
     elbow_tuple = (deque(maxlen=300), deque(maxlen=300))
     wrist_tuple = (deque(maxlen=300), deque(maxlen=300))
 
+    angle_list = SortedList()
+
     counter, fps = 0, 0
+
+    shoulder_rom = True
 
     start_time = time.time()
 
@@ -72,7 +88,7 @@ def main():
     # Visualization parameters
     row_size = 20  # pixels
     left_margin = 24  # pixels
-    text_color = (0, 0, 255)  # red
+    text_color = (255, 255, 0)  # red
     font_size = 1
     font_thickness = 1
     fps_avg_frame_count = 10
@@ -86,14 +102,18 @@ def main():
     def result_callback(result: PoseLandmarkerResult, output_image: mp.Image, timestamp_ms: int):
         result.timestamp_ms = timestamp_ms
 
-        #result.pose_landmarks[0][PoseLandmark.RIGHT_SHOULDER].z = 1
-
         right_shoulder = result.pose_landmarks[0][PoseLandmark.RIGHT_SHOULDER]
         right_elbow = result.pose_landmarks[0][PoseLandmark.RIGHT_ELBOW]
+        joint = result.pose_landmarks[0][PoseLandmark.RIGHT_SHOULDER]
         right_wrist = result.pose_landmarks[0][PoseLandmark.RIGHT_WRIST]
+        nose = result.pose_landmarks[0][PoseLandmark.NOSE]
+
+        if shoulder_rom == False:
+            joint = result.pose_landmarks[0][PoseLandmark.RIGHT_ELBOW]
 
         right_shoulder_xy = [right_shoulder.x, right_shoulder.y]
-        down_xy = [right_elbow.x, 1]
+        joint_xy = [joint.x, joint.y]
+        down_xy = [joint.x, 1]
         right_elbow_xy = [right_elbow.x, right_elbow.y]
         right_wrist_xy = [right_wrist.x, right_wrist.y]
 
@@ -105,27 +125,24 @@ def main():
         print_point_queue_info(elbow_tuple, 'Elbow:')
         print_point_queue_info(wrist_tuple, 'Wrist:')
 
-        rs_rwdist = math.dist(right_shoulder_xy, right_wrist_xy)
-        rs_dwdist = math.dist(right_shoulder_xy, down_xy)
+        jt_rwdist = math.dist(joint_xy, right_wrist_xy)
+        jt_dwdist = math.dist(joint_xy, down_xy)
         rw_dwdist = math.dist(right_wrist_xy, down_xy)
 
-        angle = math.acos((rs_rwdist**2 + rs_dwdist**2 - rw_dwdist**2) / (2 * rs_rwdist * rs_dwdist))
+        angle = math.degrees(math.acos((jt_rwdist**2 + jt_dwdist**2 - rw_dwdist**2) / (2 * jt_rwdist * jt_dwdist)))
 
+        rs_n_x_dist = nose.x - right_shoulder.x
+        rs_rw_x_dist = right_wrist.x - right_shoulder.x
+        if (np.sign(rs_n_x_dist) != np.sign(rs_rw_x_dist)):
+            angle = 360. - angle
 
-        print('elbow angle: {}\n'.format(math.degrees(angle)))
-        result.angle = math.degrees(angle)
-
-
-        #rw.x = 0
-        #rw.y = 0
+        print('arm angle: {}\n'.format(angle))
+        angle_list.add(angle)
+        result.angle = angle
 
         print('Right Shoulder: [ {} , {} , {} ]'.format(right_shoulder.x, right_shoulder.y, right_shoulder.z))
         print('Right Elbow: [ {} , {} , {} ]'.format(right_elbow.x, right_elbow.y, right_elbow.z))
         print('Right Wrist: [ {} , {} , {} ]\n'.format(right_wrist.x, right_wrist.y, right_wrist.z))
-
-        #print('Right Shoulder: {}'.format(result.pose_landmarks[0][PoseLandmark.RIGHT_SHOULDER]))
-        #print('Right Elbow: {}'.format(result.pose_landmarks[0][PoseLandmark.RIGHT_ELBOW]))
-        #print('Right Wrist: {}'.format(result.pose_landmarks[0][PoseLandmark.RIGHT_WRIST]))
 
         delay_queue.append(int(time.time() * 1000) - timestamp_ms)
         detection_result_list.clear()
@@ -150,8 +167,6 @@ def main():
            sys.exit('ERROR: Unable to read from webcam. Please verify your webcam settings.')
 
         counter += 1
-
-        #img = cv2.flip(img, 1)
 
         # convert default bgr image capture to rgb
         rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -186,19 +201,40 @@ def main():
             text_location = (left_margin, 2 * row_size)
             cv2.putText(vis_img, delay_text, text_location, cv2.FONT_HERSHEY_PLAIN,
                         font_size, text_color, font_thickness)
-            cv2.imshow('pose detection', vis_img)
 
             # Show the angle
-            angle = 0
             angle_text = 'Shoulder Angle = {:3f}'.format(detection_result_list[0].angle)
             text_location = (left_margin, 3 * row_size)
             cv2.putText(vis_img, angle_text, text_location, cv2.FONT_HERSHEY_PLAIN,
                         font_size, text_color, font_thickness)
+
+            # Show the max angle
+            angle_text = 'Average Max Angle = {:3f}'.format(avg(angle_list[-100:]))
+            text_location = (left_margin, 4 * row_size)
+            cv2.putText(vis_img, angle_text, text_location, cv2.FONT_HERSHEY_PLAIN,
+                        font_size, text_color, font_thickness)
+
+            # Show the current joint
+            angle_text = 'Shoulder = {:3f}'.format(shoulder_rom)
+            text_location = (left_margin, 5 * row_size)
+            cv2.putText(vis_img, angle_text, text_location, cv2.FONT_HERSHEY_PLAIN,
+                        font_size, text_color, font_thickness)
             cv2.imshow('pose detection', vis_img)
+
         else:
             cv2.imshow('pose detection', current_frame)
 
-        if cv2.waitKey(1) == 27:
+        keypress = cv2.waitKey(1)
+
+        if keypress == 114:
+            angle_list.clear()
+
+        # Switch which joint to measure ROM for when space is pressed
+        if keypress == 32:
+            shoulder_rom = not shoulder_rom
+
+        # End when esc is pressed
+        if keypress == 27:
             break
 
     landmarker.close()
@@ -206,4 +242,7 @@ def main():
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(e)
