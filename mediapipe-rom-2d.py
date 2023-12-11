@@ -100,55 +100,56 @@ def main():
     VisionRunningMode = mp.tasks.vision.RunningMode
 
     def result_callback(result: PoseLandmarkerResult, output_image: mp.Image, timestamp_ms: int):
-        result.timestamp_ms = timestamp_ms
+        if (len(result.pose_landmarks) > 0):
+            result.timestamp_ms = timestamp_ms
 
-        right_shoulder = result.pose_landmarks[0][PoseLandmark.RIGHT_SHOULDER]
-        right_elbow = result.pose_landmarks[0][PoseLandmark.RIGHT_ELBOW]
-        joint = result.pose_landmarks[0][PoseLandmark.RIGHT_SHOULDER]
-        right_wrist = result.pose_landmarks[0][PoseLandmark.RIGHT_WRIST]
-        nose = result.pose_landmarks[0][PoseLandmark.NOSE]
+            right_shoulder = result.pose_landmarks[0][PoseLandmark.RIGHT_SHOULDER]
+            right_elbow = result.pose_landmarks[0][PoseLandmark.RIGHT_ELBOW]
+            joint = result.pose_landmarks[0][PoseLandmark.RIGHT_SHOULDER]
+            right_wrist = result.pose_landmarks[0][PoseLandmark.RIGHT_WRIST]
+            nose = result.pose_landmarks[0][PoseLandmark.NOSE]
 
-        if shoulder_rom == False:
-            joint = result.pose_landmarks[0][PoseLandmark.RIGHT_ELBOW]
+            if shoulder_rom == False:
+                joint = result.pose_landmarks[0][PoseLandmark.RIGHT_ELBOW]
 
-        right_shoulder_xy = [right_shoulder.x, right_shoulder.y]
-        joint_xy = [joint.x, joint.y]
-        down_xy = [joint.x, 1]
-        right_elbow_xy = [right_elbow.x, right_elbow.y]
-        right_wrist_xy = [right_wrist.x, right_wrist.y]
+            right_shoulder_xy = [right_shoulder.x, right_shoulder.y]
+            joint_xy = [joint.x, joint.y]
+            down_xy = [joint.x, 1]
+            right_elbow_xy = [right_elbow.x, right_elbow.y]
+            right_wrist_xy = [right_wrist.x, right_wrist.y]
 
-        append_tuple(shoulder_tuple, right_shoulder.x, right_shoulder.y)
-        append_tuple(elbow_tuple, right_elbow.x, right_elbow.y)
-        append_tuple(wrist_tuple, right_wrist.x, right_wrist.y)
+            append_tuple(shoulder_tuple, right_shoulder.x, right_shoulder.y)
+            append_tuple(elbow_tuple, right_elbow.x, right_elbow.y)
+            append_tuple(wrist_tuple, right_wrist.x, right_wrist.y)
 
-        print_point_queue_info(shoulder_tuple, 'Shoulder:')
-        print_point_queue_info(elbow_tuple, 'Elbow:')
-        print_point_queue_info(wrist_tuple, 'Wrist:')
+            print_point_queue_info(shoulder_tuple, 'Shoulder:')
+            print_point_queue_info(elbow_tuple, 'Elbow:')
+            print_point_queue_info(wrist_tuple, 'Wrist:')
 
-        jt_rwdist = math.dist(joint_xy, right_wrist_xy)
-        jt_dwdist = math.dist(joint_xy, down_xy)
-        rw_dwdist = math.dist(right_wrist_xy, down_xy)
+            jt_rwdist = math.dist(joint_xy, right_wrist_xy)
+            jt_dwdist = math.dist(joint_xy, down_xy)
+            rw_dwdist = math.dist(right_wrist_xy, down_xy)
 
-        angle = math.degrees(math.acos((jt_rwdist**2 + jt_dwdist**2 - rw_dwdist**2) / (2 * jt_rwdist * jt_dwdist)))
+            angle = math.degrees(math.acos((jt_rwdist**2 + jt_dwdist**2 - rw_dwdist**2) / (2 * jt_rwdist * jt_dwdist)))
 
-        rs_n_x_dist = nose.x - right_shoulder.x
-        rs_rw_x_dist = right_wrist.x - right_shoulder.x
-        if (np.sign(rs_n_x_dist) != np.sign(rs_rw_x_dist)):
-            angle = 360. - angle
+            rs_n_x_dist = nose.x - right_shoulder.x
+            rs_rw_x_dist = right_wrist.x - right_shoulder.x
+            if (np.sign(rs_n_x_dist) != np.sign(rs_rw_x_dist)):
+                angle = 360. - angle
 
-        print('arm angle: {}\n'.format(angle))
-        angle_list.add(angle)
-        result.angle = angle
+            print('arm angle: {}\n'.format(angle))
+            angle_list.add(angle)
+            result.angle = angle
 
-        print('Right Shoulder: [ {} , {} , {} ]'.format(right_shoulder.x, right_shoulder.y, right_shoulder.z))
-        print('Right Elbow: [ {} , {} , {} ]'.format(right_elbow.x, right_elbow.y, right_elbow.z))
-        print('Right Wrist: [ {} , {} , {} ]\n'.format(right_wrist.x, right_wrist.y, right_wrist.z))
+            print('Right Shoulder: [ {} , {} , {} ]'.format(right_shoulder.x, right_shoulder.y, right_shoulder.z))
+            print('Right Elbow: [ {} , {} , {} ]'.format(right_elbow.x, right_elbow.y, right_elbow.z))
+            print('Right Wrist: [ {} , {} , {} ]\n'.format(right_wrist.x, right_wrist.y, right_wrist.z))
 
-        delay_queue.append(int(time.time() * 1000) - timestamp_ms)
-        detection_result_list.clear()
-        detection_result_list.append(result)
-        image_result_list.clear()
-        image_result_list.append(output_image)
+            delay_queue.append(int(time.time() * 1000) - timestamp_ms)
+            
+            detection_result_list.append(result)
+            
+            image_result_list.append(output_image)
 
     options = PoseLandmarkerOptions(
         base_options=BaseOptions(model_asset_path=model_path),
@@ -183,7 +184,7 @@ def main():
             fps = fps_avg_frame_count / (end_time - start_time)
             start_time = time.time()
 
-        if detection_result_list and image_result_list:
+        if len(detection_result_list) > 0 and len(image_result_list) > 0:
             current_frame = image_result_list[0].numpy_view()
             current_frame = cv2.cvtColor(current_frame, cv2.COLOR_RGB2BGR)
             # Show the FPS
@@ -220,12 +221,12 @@ def main():
             cv2.putText(vis_img, angle_text, text_location, cv2.FONT_HERSHEY_PLAIN,
                         font_size, text_color, font_thickness)
             cv2.imshow('pose detection', vis_img)
-
-        else:
-            cv2.imshow('pose detection', current_frame)
+            detection_result_list.clear()
+            image_result_list.clear()
 
         keypress = cv2.waitKey(1)
 
+        # Reset max angle when the 'r' key is pressed
         if keypress == 114:
             angle_list.clear()
 
